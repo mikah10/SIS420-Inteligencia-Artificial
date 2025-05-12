@@ -1,0 +1,17 @@
+Los integrantes del Grupo son los siguientes:
+
+- Loaiza Torres Oscar Agustín
+
+- Fernandez Acho Alexande Paul
+
+- Saravia Grass Rafael Alejandro
+
+- Hinojosa Yucra Samantha Mikaela
+
+Para el punto 1 que se realizó la defensa correspondiente en clases, empleamos un dataset sintetico donde con la funcion randomica definimos los clusters en un rango de 1 a 20, empleando 2000 ejemplos sinteticos, 30 caracteristicas y una dispersion de 1.2
+
+El Dataset que estamos utilizando es English Typed Alphabets and Numbers, que estan guardados en bits en un .CSV, para mas informacion acceder al siguiente enlace donde se descargó el dataset: https://www.kaggle.com/datasets/munemshahriar642/english-typed-font-in-csv
+
+Este dataset se empleó para cumplir el punto 2 del trabajo, donde aplicamos el aprendizaje semisupervisado, primero agrupando y en base a ello etiquetar los datos para que más adelante apliquemos aprendizaje supervisado, en este caso una clasificación.
+
+Aunque es opcional tambien trabajamos en el punto 3 empleando las tecnicas de DBSCAN y Gaussian Mixtures aprendiendo y conociendo algunas aplicaciones para saber cuando podemos utilizar una de estas técnicas.
