@@ -1,0 +1,1 @@
+self.robot_id = p.loadURDF("kuka_iiwa/model.urdf", useFixedBase=True)

@@ -1,0 +1,468 @@
+import numpy as np
+import pandas as pd
+import pickle
+from tqdm import tqdm
+import matplotlib.pyplot as plt
+
+class ConnectFourBoard():
+    def _init_(self, rows=6, cols=7):
+        """
+        Tablero de 4 en raya (Connect Four)
+        Por defecto: 6 filas x 7 columnas
+        """
+        self.rows = rows
+        self.cols = cols
+        self.state = np.zeros((rows, cols), dtype=int)
+
+    def valid_moves(self):
+        """Devuelve las columnas donde se puede hacer un movimiento válido"""
+        return [col for col in range(self.cols) if self.state[0, col] == 0]
+
+    def update(self, symbol, col):
+        """
+        Coloca una ficha en la columna especificada
+        La ficha cae hasta la posición más baja disponible
+        """
+        if col not in self.valid_moves():
+            raise ValueError(f"Movimiento ilegal en columna {col}!")
+        
+        # Encontrar la fila más baja disponible en la columna
+        for row in range(self.rows - 1, -1, -1):
+            if self.state[row, col] == 0:
+                self.state[row, col] = symbol
+                return row, col
+        
+        raise ValueError(f"Columna {col} está llena!")
+
+    def is_game_over(self):
+        """
+        Verifica si el juego ha terminado
+        Retorna: 1 si gana jugador 1, -1 si gana jugador 2, 0 empate, None si continúa
+        """
+        # Comprobar victorias horizontales
+        for row in range(self.rows):
+            for col in range(self.cols - 3):
+                window = self.state[row, col:col+4]
+                if np.sum(window) == 4:
+                    return 1
+                elif np.sum(window) == -4:
+                    return -1
+
+        # Comprobar victorias verticales
+        for row in range(self.rows - 3):
+            for col in range(self.cols):
+                window = self.state[row:row+4, col]
+                if np.sum(window) == 4:
+                    return 1
+                elif np.sum(window) == -4:
+                    return -1
+
+        # Comprobar diagonales positivas (/)
+        for row in range(self.rows - 3):
+            for col in range(self.cols - 3):
+                window = [self.state[row+i, col+i] for i in range(4)]
+                if sum(window) == 4:
+                    return 1
+                elif sum(window) == -4:
+                    return -1
+
+        # Comprobar diagonales negativas (\)
+        for row in range(3, self.rows):
+            for col in range(self.cols - 3):
+                window = [self.state[row-i, col+i] for i in range(4)]
+                if sum(window) == 4:
+                    return 1
+                elif sum(window) == -4:
+                    return -1
+
+        # Verificar empate (tablero lleno)
+        if len(self.valid_moves()) == 0:
+            return 0
+
+        # El juego continúa
+        return None
+
+    def reset(self):
+        """Reinicia el tablero"""
+        self.state = np.zeros((self.rows, self.cols), dtype=int)
+
+    def display(self):
+        """Muestra el tablero de forma visual"""
+        print("\n" + "="*29)
+        print("  0   1   2   3   4   5   6")
+        print("="*29)
+        for row in self.state:
+            print("| ", end="")
+            for cell in row:
+                if cell == 1:
+                    print("X", end=" | ")
+                elif cell == -1:
+                    print("O", end=" | ")
+                else:
+                    print(" ", end=" | ")
+            print()
+        print("="*29)
+
+class ConnectFourGame():
+    def _init_(self, player1, player2):
+        """Inicializa el juego con dos jugadores"""
+        player1.symbol = 1
+        player2.symbol = -1
+        self.players = [player1, player2]
+        self.board = ConnectFourBoard()
+
+    def selfplay(self, rounds=100):
+        """Ejecuta múltiples partidas de auto-juego para entrenamiento"""
+        wins = [0, 0, 0]  # [jugador1, jugador2, empates]
+        
+        for i in tqdm(range(1, rounds + 1), desc="Entrenando agente"):
+            self.board.reset()
+            for player in self.players:
+                player.reset()
+            
+            game_over = False
+            while not game_over:
+                for player_idx, player in enumerate(self.players):
+                    if len(self.board.valid_moves()) == 0:
+                        game_over = True
+                        break
+                    
+                    try:
+                        action = player.move(self.board)
+                        self.board.update(player.symbol, action)
+                        
+                        # Actualizar estados de ambos jugadores
+                        for p in self.players:
+                            p.update(self.board)
+                        
+                        # Verificar si el juego terminó
+                        game_result = self.board.is_game_over()
+                        if game_result is not None:
+                            game_over = True
+                            break
+                            
+                    except ValueError:
+                        # Movimiento inválido, el jugador pierde
+                        game_over = True
+                        break
+            
+            # Asignar recompensas
+            self.reward()
+            
+            # Contar victorias
+            result = self.board.is_game_over()
+            if result == 1:
+                wins[0] += 1
+            elif result == -1:
+                wins[1] += 1
+            else:
+                wins[2] += 1
+        
+        return wins
+
+    def reward(self):
+        """Asigna recompensas a los jugadores basado en el resultado"""
+        winner = self.board.is_game_over()
+        
+        if winner == 0:  # Empate
+            for player in self.players:
+                player.reward(0.5)
+        else:  # Hay un ganador
+            for player in self.players:
+                if winner == player.symbol:
+                    player.reward(1.0)  # Victoria
+                else:
+                    player.reward(0.0)  # Derrota
+
+    def play_human_vs_agent(self, human_symbol=1):
+        """Permite a un humano jugar contra el agente entrenado"""
+        self.board.reset()
+        
+        if human_symbol == 1:
+            human_player = self.players[0]
+            agent_player = self.players[1]
+        else:
+            human_player = self.players[1]
+            agent_player = self.players[0]
+        
+        print("¡Juego de 4 en Raya!")
+        print("Tú eres las fichas 'X' si juegas como jugador 1, 'O' si juegas como jugador 2")
+        self.board.display()
+        
+        game_over = False
+        current_player = 0  # 0 para jugador 1, 1 para jugador 2
+        
+        while not game_over:
+            if (current_player == 0 and human_symbol == 1) or (current_player == 1 and human_symbol == -1):
+                # Turno del humano
+                valid_cols = self.board.valid_moves()
+                print(f"Columnas válidas: {valid_cols}")
+                
+                try:
+                    col = int(input("Elige una columna (0-6): "))
+                    if col not in valid_cols:
+                        print("¡Movimiento inválido! Intenta de nuevo.")
+                        continue
+                    
+                    self.board.update(human_player.symbol, col)
+                    
+                except (ValueError, IndexError):
+                    print("¡Entrada inválida! Intenta de nuevo.")
+                    continue
+            else:
+                # Turno del agente
+                print("Turno del agente...")
+                col = agent_player.move(self.board, explore=False)  # Sin exploración
+                self.board.update(agent_player.symbol, col)
+                print(f"El agente eligió la columna {col}")
+            
+            self.board.display()
+            
+            # Verificar fin del juego
+            result = self.board.is_game_over()
+            if result is not None:
+                if result == human_symbol:
+                    print("¡Felicidades! ¡Has ganado!")
+                elif result == -human_symbol:
+                    print("El agente ha ganado. ¡Mejor suerte la próxima vez!")
+                else:
+                    print("¡Empate!")
+                game_over = True
+            
+            # Cambiar turno
+            current_player = 1 - current_player
+
+class ConnectFourAgent():
+    def _init_(self, alpha=0.3, prob_exp=0.3):
+        """
+        Agente de aprendizaje por refuerzo para 4 en raya
+        
+        Args:
+            alpha: tasa de aprendizaje (learning rate)
+            prob_exp: probabilidad de exploración
+        """
+        self.value_function = {}  # Tabla estado -> valor
+        self.alpha = alpha        # Tasa de aprendizaje
+        self.positions = []       # Estados visitados en la partida actual
+        self.prob_exp = prob_exp  # Probabilidad de exploración
+        self.symbol = None        # Se asigna durante el juego
+
+    def reset(self):
+        """Reinicia el historial de posiciones para una nueva partida"""
+        self.positions = []
+
+    def move(self, board, explore=True):
+        """
+        Decide el próximo movimiento
+        
+        Args:
+            board: estado actual del tablero
+            explore: si True, permite exploración; si False, solo explotación
+        """
+        valid_moves = board.valid_moves()
+        
+        if not valid_moves:
+            raise ValueError("No hay movimientos válidos disponibles")
+        
+        # Exploración: movimiento aleatorio
+        if explore and np.random.uniform(0, 1) < self.prob_exp:
+            return np.random.choice(valid_moves)
+        
+        # Explotación: elegir el mejor movimiento conocido
+        max_value = -1000
+        best_col = valid_moves[0]  # Por defecto, el primer movimiento válido
+        
+        for col in valid_moves:
+            # Simular el movimiento
+            next_board = board.state.copy()
+            
+            # Encontrar dónde caería la ficha
+            for row in range(board.rows - 1, -1, -1):
+                if next_board[row, col] == 0:
+                    next_board[row, col] = self.symbol
+                    break
+            
+            # Convertir estado a string para búsqueda en tabla
+            next_state = str(next_board.flatten())
+            value = self.value_function.get(next_state, 0)
+            
+            if value > max_value:
+                max_value = value
+                best_col = col
+        
+        return best_col
+
+    def update(self, board):
+        """Actualiza el historial de posiciones visitadas"""
+        state_str = str(board.state.flatten())
+        self.positions.append(state_str)
+
+    def reward(self, reward):
+        """
+        Actualiza la función de valor usando la recompensa recibida
+        Implementa Temporal Difference Learning
+        """
+        for position in reversed(self.positions):
+            if position not in self.value_function:
+                self.value_function[position] = 0
+            
+            # Actualización TD: V(s) = V(s) + α * (reward - V(s))
+            self.value_function[position] += self.alpha * (reward - self.value_function[position])
+            reward = self.value_function[position]
+
+    def save_agent(self, filename):
+        """Guarda la función de valor del agente"""
+        with open(filename, 'wb') as f:
+            pickle.dump(self.value_function, f, protocol=pickle.HIGHEST_PROTOCOL)
+        print(f"Agente guardado en {filename}")
+
+    def load_agent(self, filename):
+        """Carga la función de valor del agente"""
+        try:
+            with open(filename, 'rb') as f:
+                self.value_function = pickle.load(f)
+            print(f"Agente cargado desde {filename}")
+        except FileNotFoundError:
+            print(f"Archivo {filename} no encontrado. Iniciando con agente nuevo.")
+
+# =============================================================================
+# ENTRENAMIENTO DEL AGENTE
+# =============================================================================
+
+print("Iniciando entrenamiento del agente de 4 en raya...")
+print("="*50)
+
+# Crear dos agentes
+agent1 = ConnectFourAgent(alpha=0.3, prob_exp=0.4)  # Más exploración
+agent2 = ConnectFourAgent(alpha=0.3, prob_exp=0.2)  # Menos exploración
+
+# Crear el juego
+game = ConnectFourGame(agent1, agent2)
+
+# Entrenar con diferentes números de partidas
+training_rounds = [10000, 50000, 100000]
+results = []
+
+for rounds in training_rounds:
+    print(f"\nEntrenando con {rounds} partidas...")
+    wins = game.selfplay(rounds)
+    
+    win_rate_1 = wins[0] / rounds * 100
+    win_rate_2 = wins[1] / rounds * 100
+    draw_rate = wins[2] / rounds * 100
+    
+    print(f"Resultados después de {rounds} partidas:")
+    print(f"  Agente 1 (X): {wins[0]} victorias ({win_rate_1:.1f}%)")
+    print(f"  Agente 2 (O): {wins[1]} victorias ({win_rate_2:.1f}%)")
+    print(f"  Empates: {wins[2]} ({draw_rate:.1f}%)")
+    
+    results.append({
+        'rounds': rounds,
+        'agent1_wins': wins[0],
+        'agent2_wins': wins[1],
+        'draws': wins[2],
+        'states_learned': len(agent1.value_function)
+    })
+
+# =============================================================================
+# ANÁLISIS DE RESULTADOS
+# =============================================================================
+
+print("\n" + "="*50)
+print("ANÁLISIS DE RESULTADOS")
+print("="*50)
+
+# Mostrar evolución del aprendizaje
+df_results = pd.DataFrame(results)
+print("\nEvolución del aprendizaje:")
+print(df_results)
+
+# Función de valor aprendida
+print(f"\nEstados aprendidos por el agente: {len(agent1.value_function)}")
+
+# Mostrar los mejores estados según el agente
+value_function_sorted = sorted(agent1.value_function.items(), 
+                              key=lambda x: x[1], reverse=True)
+
+print("\nTop 10 mejores estados según el agente:")
+for i, (state, value) in enumerate(value_function_sorted[:10]):
+    print(f"{i+1}. Valor: {value:.4f}")
+
+# Guardar el agente entrenado
+agent1.save_agent('agente_conecta4.pickle')
+
+# =============================================================================
+# VISUALIZACIÓN DE RESULTADOS
+# =============================================================================
+
+fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(15, 10))
+
+# Gráfico 1: Evolución de victorias
+rounds_list = df_results['rounds'].tolist()
+ax1.plot(rounds_list, df_results['agent1_wins'], 'b-o', label='Agente 1', linewidth=2)
+ax1.plot(rounds_list, df_results['agent2_wins'], 'r-o', label='Agente 2', linewidth=2)
+ax1.plot(rounds_list, df_results['draws'], 'g-o', label='Empates', linewidth=2)
+ax1.set_xlabel('Partidas de entrenamiento')
+ax1.set_ylabel('Número de victorias')
+ax1.set_title('Evolución de Victorias durante el Entrenamiento')
+ax1.legend()
+ax1.grid(True, alpha=0.3)
+
+# Gráfico 2: Porcentajes de victoria
+win_rates_1 = [wins/rounds*100 for wins, rounds in zip(df_results['agent1_wins'], df_results['rounds'])]
+win_rates_2 = [wins/rounds*100 for wins, rounds in zip(df_results['agent2_wins'], df_results['rounds'])]
+draw_rates = [draws/rounds*100 for draws, rounds in zip(df_results['draws'], df_results['rounds'])]
+
+ax2.plot(rounds_list, win_rates_1, 'b-o', label='Agente 1', linewidth=2)
+ax2.plot(rounds_list, win_rates_2, 'r-o', label='Agente 2', linewidth=2)
+ax2.plot(rounds_list, draw_rates, 'g-o', label='Empates', linewidth=2)
+ax2.set_xlabel('Partidas de entrenamiento')
+ax2.set_ylabel('Porcentaje de victorias (%)')
+ax2.set_title('Tasa de Victoria durante el Entrenamiento')
+ax2.legend()
+ax2.grid(True, alpha=0.3)
+
+# Gráfico 3: Estados aprendidos
+ax3.plot(rounds_list, df_results['states_learned'], 'purple', marker='o', linewidth=2)
+ax3.set_xlabel('Partidas de entrenamiento')
+ax3.set_ylabel('Número de estados aprendidos')
+ax3.set_title('Crecimiento del Conocimiento del Agente')
+ax3.grid(True, alpha=0.3)
+
+# Gráfico 4: Distribución de valores en la función de valor
+values = list(agent1.value_function.values())
+ax4.hist(values, bins=50, alpha=0.7, color='orange', edgecolor='black')
+ax4.set_xlabel('Valor del estado')
+ax4.set_ylabel('Frecuencia')
+ax4.set_title('Distribución de Valores en la Función de Valor')
+ax4.grid(True, alpha=0.3)
+
+plt.tight_layout()
+plt.show()
+
+print("\n" + "="*50)
+print("ENTRENAMIENTO COMPLETADO")
+print("="*50)
+print("El agente ha sido entrenado y guardado como 'agente_conecta4.pickle'")
+print("Puedes usar este agente para jugar contra él o continuar el entrenamiento.")
+
+# =============================================================================
+# FUNCIÓN PARA JUGAR CONTRA EL AGENTE (OPCIONAL)
+# =============================================================================
+
+def jugar_contra_agente():
+    """Función para jugar una partida contra el agente entrenado"""
+    print("\n¿Quieres jugar una partida contra el agente? (s/n): ", end="")
+    respuesta = input().lower()
+    
+    if respuesta == 's':
+        # Crear nuevos agentes para el juego
+        agente_humano = ConnectFourAgent(prob_exp=0)  # Sin exploración para el "humano"
+        agente_ia = ConnectFourAgent(prob_exp=0)      # Sin exploración para juego serio
+        agente_ia.value_function = agent1.value_function.copy()  # Copiar conocimiento
+        
+        juego_vs_humano = ConnectFourGame(agente_humano, agente_ia)
+        juego_vs_humano.play_human_vs_agent(human_symbol=1)
+
+# Llamar a la función de juego si se desea
+# jugar_contra_agente()
